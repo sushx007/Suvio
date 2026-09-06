@@ -1,0 +1,24 @@
+{
+  "$schema": "./node_modules/oxlint/configuration_schema.json",
+  "ignorePatterns": [
+    "**/.next/**",
+    "**/node_modules/**",
+    "**/build/**",
+    "**/dist/**",
+    "**/*.min.js",
+    "**/polyfills*.js",
+    "**/app-pages-internals*.js",
+    "public/sw.js",
+    "public/**/*.js"
+  ],
+  "env": {
+    "browser": true,
+    "es2022": true,
+    "node": true
+  },
+  "globals": {
+    "ActiveXObject": "readonly",
+    "Bun": "readonly",
+    "_N_E": "readonly"
+  }
+}

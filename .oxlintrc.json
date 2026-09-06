@@ -1,0 +1,15 @@
+{
+  "ignorePatterns": [
+    "**/.next/**",
+    "**/node_modules/**",
+    "**/build/**",
+    "**/dist/**",
+    "frontend/.next/**",
+    "frontend/public/sw.js"
+  ],
+  "globals": {
+    "ActiveXObject": "readonly",
+    "Bun": "readonly",
+    "_N_E": "readonly"
+  }
+}

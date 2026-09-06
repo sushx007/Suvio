@@ -1,0 +1,26 @@
+{
+  "summary": "Suvio V2.1 backend regression PASSED 15/15. Verified: (1) premium lifetime plan for user 7e36ab22 (all 6 gates true, taskReminderCallsLimit=-1 nested under usage, planExpiresAt=2099-12-31), (2) reminders/settings GET+PUT with timezone field, (3) PUT reminders/settings triggers immediate scheduleRecurringForUser and enqueues meal reminders whose UTC scheduledFor maps EXACTLY to breakfast 08:00 / lunch 13:00 / dinner 20:00 America/New_York local time (also workout reminders enqueued), (4) POST /api/cron/reminders 401 without Bearer, 401 with wrong secret, 200 with correct 'suvio-cron-secret-dev' and NO user cookie (public secret-authed as designed), (5) AI Personal Trainer POST/GET/DELETE full CRUD with formScore, estimatedKcal, totalCorrectReps computed correctly and DB persistence verified, DELETE of bogus id returns 404, (6) POST /api/auth/phone/send returns { ok:true, devMode:true } as dev fallback (TWILIO_* not set), (7) Non-premium user (seeded temp free user) correctly gets 402 on meals/workout/water enable, (8) Code-verified: tools.js schedule_phone_call uses user.reminderSettings.timezone → preferences.timezone → 'Asia/Kolkata' fallback and formats with { timeZone: userTz }, (9) scheduler.js MAX_ATTEMPTS=3 with exponential backoff (5/15/60 min) and status stays 'pending' with nextRetryAt on retry, (10) workout page contains data-testid='ai-trainer-section'.",
+  "backend_issues": { "critical": [], "minor": [] },
+  "frontend_issues": { "ui_bugs": [], "integration_issues": [], "design_issues": [] },
+  "test_report_links": [
+    "/app/backend/tests/test_suvio_v21_features.py",
+    "/app/test_reports/pytest/pytest_v21.xml"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "route.js is now ~1999 lines — still exceeds the 700-line guideline (flagged in iteration_1 & 2, no regression on this).",
+    "scheduler.js scheduleRecurringForUser water loop iterates minute-by-minute for the full 24h horizon (~1440 iterations) doing a DB findOne per matching slot. For many users this becomes O(users * hours * 60) DB queries. Recommend building candidate times in-memory first, then a single bulk findOne with $in on purposeKey.",
+    "PUT /api/reminders/settings replaces the entire reminderSettings doc with the request body via $set (line 1541). A client sending a partial payload (e.g. just {timezone,...}) can wipe unrelated sub-objects like taskFollowup. Consider deep-merging with existing settings or requiring the full object in the schema.",
+    "tools.js line 251 rejects 'when < Date.now() - 60_000' but the tool description asks the LLM to compute absolute ISO in the user's tz — no explicit rejection if the LLM passes a naive local timestamp without offset. Low-risk with the current gpt-4o-mini prompt but worth guarding.",
+    "runDueReminders processes serially (for-of with await) — a single slow placeVoiceCall stalls the whole batch. Consider Promise.allSettled with a small concurrency cap.",
+    "cron endpoint returns full `results` array which includes per-reminder reason strings — fine, but consider truncating for large batches."
+  ],
+  "updated_files": ["/app/backend/tests/test_suvio_v21_features.py"],
+  "success_rate": { "backend": "100% (15/15)", "frontend": "not_tested (backend-only request)" },
+  "test_credentials": "Premium user id=7e36ab22-9875-4747-922d-912f7e5a820f phone=+919705709170 email=sushanth6313@gmail.com. JWT signed with 'suvio-dev-secret-please-change-in-prod' HS256, payload {id,email,name,phone}, cookie name suvio_token. CRON_SECRET=suvio-cron-secret-dev.",
+  "seed_data_creation": "Test run added 1 trainer_session doc (then deleted it) and repopulated reminder_queue with meal+workout reminders for the premium user (~10 docs). Temp free user with phone +911111111111 was created and cleaned up. No lasting pollution.",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Test file /app/backend/tests/test_suvio_v21_features.py is the V2.1 regression suite (15 tests, ~4s). Run with `pytest /app/backend/tests/test_suvio_v21_features.py -v`. It mints its own JWT and hits the public URL. TestReminderSettings.test_put_settings_timezone_ny_meals_workout clears the user's reminder_queue before PUT so it can precisely assert NY-local hour mapping — do NOT reorder or the count assertion may see stale docs. The plan/status response nests taskReminderCallsLimit under `usage`, not at top level. All V2.1 features work as spec'd.",
+  "rca of the issue": "No bugs found. Sole initial test failure was a test-side assumption about response shape (taskReminderCallsLimit lives under usage.taskReminderCallsLimit not top-level) — fixed in the test."
+}

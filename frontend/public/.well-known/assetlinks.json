@@ -1,0 +1,16 @@
+// Digital Asset Links – enables Chrome to open the Suvio TWA when a user
+// with the signed Android APK opens a Suvio URL, instead of the browser.
+// Replace `<your-package-name>` and `<sha256-fingerprint>` with the values
+// from your Bubblewrap build (see /download for build instructions).
+[
+  {
+    "relation": ["delegate_permission/common.handle_all_urls"],
+    "target": {
+      "namespace": "android_app",
+      "package_name": "app.suvio.twa",
+      "sha256_cert_fingerprints": [
+        "REPLACE_WITH_YOUR_APK_SIGNING_KEY_SHA256"
+      ]
+    }
+  }
+]

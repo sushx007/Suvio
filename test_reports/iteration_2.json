@@ -1,0 +1,44 @@
+{
+  "summary": "Suvio AI V2 (NL actions + scope refusal) end-to-end test. 13/15 backend pytest pass. Frontend desktop + mobile UI verified: action chip 'Logged 250ml water.' rendered, no console errors, no horizontal scroll on 390x844. Two real behavioral gaps in the LLM/system-prompt found: (1) legitimate in-scope query 'How much water have I had today?' is REFUSED as OOS, and (2) genuinely ambiguous 'Book it' is REFUSED as OOS instead of asking a clarifying question. All other NL action → DB write flows work correctly with proper dedup and destructive-confirmation guard.",
+  "backend_issues": {
+    "critical": [
+      {"endpoint": "POST /api/ai/chat/stream", "issue": "In-scope query 'How much water have I had today?' incorrectly triggers the STRICT scope refusal — the assistant replies with the canned 'I can only help with things inside Suvio…' message and never references the user's water intake (which is IN Health scope and available in contextBlock). Expected: quote today's ml total (e.g. '1310 ml') without calling any tool.", "priority": "HIGH"},
+      {"endpoint": "POST /api/ai/chat/stream", "issue": "'Book it' (no context) is refused as OOS instead of triggering the clarification path. Per V2 spec, genuinely ambiguous input should elicit ONE follow-up question. Root cause: system prompt's Refusal rule is checked before Clarification rule; the LLM sees no scope keywords in 'Book it' and refuses.", "priority": "MEDIUM"}
+    ],
+    "minor": [
+      {"endpoint": "POST /api/ai/chat/stream (create_task)", "issue": "Occasional flakiness parsing 'Friday' — one run computed dueDate 2026-07-15T00:00+05:30 (Wed) instead of upcoming Fri 2026-07-17. Most runs correct. LLM-side non-determinism; system prompt could be reinforced with 'if the weekday name is later this week, pick THIS week's occurrence; if it's already past, pick next week's.'"}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "/login and /dashboard/ai", "issues": ["Next.js warning: 'Unsupported metadata themeColor is configured in metadata export' — move to viewport export. Cosmetic; carried over from iteration_1."]}
+    ]
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_suvio_ai_v2_nl_actions.py",
+    "/app/test_reports/pytest/pytest_v2_nl_actions.xml"
+  ],
+  "action_items": [
+    "Fix scope-refusal over-triggering: 'How much water have I had today?' must be treated as IN-SCOPE (Health/Water topic). Consider softening the refusal rule so that when the user asks a factual question that maps to an entity already in contextBlock (water, tasks, spend, weight, trips, notes), the LLM must answer from context and skip the refusal template. Add an explicit example in the system prompt: 'If the user asks HOW MUCH/HOW MANY/WHEN about their tasks, water, spend, weight, trips, notes, wardrobe items or documents → ANSWER from context, never refuse.'",
+    "Fix ambiguous-input handling: 'Book it' with no prior context should ask ONE follow-up (e.g. 'Book what? A task, a trip, or a reminder call?') rather than falling through to scope refusal. Re-order the system prompt so 'Clarification' precedes 'Refusal' and add an example that a bare pronoun ('it', 'that') with no antecedent triggers a clarifying question.",
+    "Reinforce relative-date parsing for 'Friday': add explicit example — 'If today is Tuesday and user says Friday, pick this week Friday (3 days from now), not tomorrow.'",
+    "COSMETIC: move themeColor from metadata export to viewport export in Next.js pages."
+  ],
+  "critical_code_review_comments": [
+    "route.js is ~1933 lines — beyond 700-line guideline; already flagged in iteration_1.",
+    "The scope-refusal template is inlined in the system prompt (line ~1604) and duplicated in the non-streaming /api/ai/chat handler. Consider extracting REFUSAL_TEXT to a shared constant in /lib/prompts.js so future tweaks stay consistent across both endpoints.",
+    "executeTool's create_task dueDate uses `new Date(args.dueDate)` — safe because we require ISO 8601, but no explicit past-date rejection (creating a task due 2 days ago is silently allowed). Minor UX polish."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_suvio_ai_v2_nl_actions.py"
+  ],
+  "success_rate": { "backend": "87% (13/15)", "frontend": "100%" },
+  "test_credentials": "phone +919705709170 / Sushanth@2026 (email sushanthv015@gmail.com) — premium lifetime, phoneVerified=true. Continues to work correctly for auth + AI streaming.",
+  "seed_data_creation": "During this run the user's collections gained: ~5 water_logs (250/60/100/500/500 ml), 2 dentist tasks, 1 'Buy groceries' task, 1 expense (850 Food dinner), and multiple ai_messages sessions including 'TEST_v2_rename'. History was NOT cleaned up so main agent can visually inspect via UI.",
+  "retest_needed": true,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Backend test file is /app/backend/tests/test_suvio_ai_v2_nl_actions.py — run with `pytest ... -n 0` (sequential) because tests count DB doc diffs. All auth uses phone-first login. USER_ID for sushanthv015@gmail.com is hard-coded (4ab39f9d-1266-4935-ab3e-8706a60b5218). The two failing tests (Personalized water query, Book-it clarification) are LLM-behavior bugs — they will FAIL until the system prompt in route.js (~line 1598) is reworked. Frontend selectors use data-testid: 'ai-input' (an <input>, NOT <textarea>), 'ai-send', 'new-conversation'. On mobile 390x844 the sidebar collapses/hides — that is expected. Date-of-record for tests: 2026-07-14 (Tue) IST → next Friday = 2026-07-17.",
+  "rca of the issue": "STRICT scope refusal rule (lines 1600-1605 of /app/frontend/app/api/[[...path]]/route.js) instructs the LLM to respond ONLY with the canned refusal message for 'general knowledge / world facts / historical questions'. gpt-4o-mini classifies 'How much water have I had today?' as a 'how much' factual question that matches its refusal template, and 'Book it' as a bare command with no scope keyword. Fix is prompt-only: (a) add positive examples of in-scope factual questions the LLM MUST answer, (b) move Clarification rule ABOVE Refusal rule, (c) add explicit fallback: 'If the message is a single short phrase with no clear scope, first ASK before refusing.'"
+}
